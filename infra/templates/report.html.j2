@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>INFRA Report — {{ report.meta.start[:10] }}</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a1f2e;
+      --panel-2: #232938;
+      --border: #2a3142;
+      --text: #e6e8eb;
+      --muted: #8b95a7;
+      --accent: #4fc3f7;
+      --accent-2: #81c784;
+      --warn: #ffb74d;
+      --crit: #e57373;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      line-height: 1.5;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+      margin-bottom: 32px;
+    }
+    h1 { font-size: 28px; margin: 0 0 4px 0; font-weight: 600; }
+    .subtitle { color: var(--muted); font-size: 14px; }
+    h2 {
+      font-size: 18px; font-weight: 600;
+      margin: 36px 0 16px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    h2 .count {
+      font-size: 13px; color: var(--muted);
+      font-weight: 400; margin-left: 8px;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+    }
+    .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .stat .value { font-size: 24px; font-weight: 600; margin-top: 4px; }
+    .stat .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      font-size: 13px;
+    }
+    th {
+      background: var(--panel-2);
+      text-align: left;
+      padding: 10px 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: .5px;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover { background: rgba(79, 195, 247, 0.04); }
+    code {
+      font-family: "SF Mono", "Cascadia Code", Menlo, monospace;
+      font-size: 12px;
+      color: var(--accent);
+    }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--panel-2);
+      color: var(--muted);
+      margin: 2px 2px 2px 0;
+    }
+    .pill.ok { background: rgba(129, 199, 132, 0.15); color: var(--accent-2); }
+    .pill.warn { background: rgba(255, 183, 77, 0.15); color: var(--warn); }
+    .pill.crit { background: rgba(229, 115, 115, 0.15); color: var(--crit); }
+    .pill.role { background: rgba(79, 195, 247, 0.15); color: var(--accent); }
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      padding: 24px;
+      text-align: center;
+      background: var(--panel);
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+    }
+    footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+    .hours-bar {
+      display: flex;
+      gap: 2px;
+      align-items: flex-end;
+      height: 60px;
+      margin-top: 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .hours-bar .bar {
+      flex: 1;
+      background: var(--accent);
+      opacity: .8;
+      border-radius: 2px 2px 0 0;
+      min-height: 2px;
+      position: relative;
+    }
+    .hours-bar .bar.peak { background: var(--accent-2); opacity: 1; }
+    .hours-bar .bar::after {
+      content: attr(data-hour);
+      position: absolute;
+      bottom: -16px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      color: var(--muted);
+    }
+    .severity-high { color: var(--crit); }
+    .severity-medium { color: var(--warn); }
+    .severity-low { color: var(--accent-2); }
+    .small { font-size: 11px; color: var(--muted); }
+    @media print {
+      body { background: white; color: black; }
+      .stat, table, .hours-bar { background: white; border: 1px solid #ccc; }
+      th { background: #f0f0f0; color: #333; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Rapport d'audit infrastructure</h1>
+    <div class="subtitle">
+      Capture du {{ report.meta.start }} au {{ report.meta.end }}
+      &mdash; {{ report.meta.hours }}h
+      &mdash; généré le {{ generated_at }}
+    </div>
+  </header>
+
+  {# ─────────────  EXECUTIVE SUMMARY  ───────────── #}
+  <h2>Synthèse</h2>
+  <div class="summary">
+    <div class="stat">
+      <div class="label">Appareils</div>
+      <div class="value">{{ report.meta.devices }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">SaaS détectés</div>
+      <div class="value">{{ report.saas_inventory | length }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Flows</div>
+      <div class="value">{{ "{:,}".format(report.meta.flows) }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Volume observé</div>
+      <div class="value">{{ report.meta.bytes | humanbytes }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Anomalies</div>
+      <div class="value">{{ report.anomalies | length }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Dépendances critiques</div>
+      <div class="value">{{ report.critical_dependencies | length }}</div>
+    </div>
+  </div>
+
+  {# ─────────────  BUSINESS HOURS  ───────────── #}
+  {% if report.business_hours and report.business_hours.distribution %}
+  <h2>Heures d'activité <span class="count">{{ report.business_hours.start }} — {{ report.business_hours.end }} (pic {{ report.business_hours.peak }})</span></h2>
+  {% set max_h = report.business_hours.distribution.values() | list | max %}
+  {% set peak_h = report.business_hours.peak[:2] | int %}
+  <div class="hours-bar">
+    {% for h in range(24) %}
+      {% set count = report.business_hours.distribution.get(h, 0) %}
+      {% set height = (count / max_h * 100) if max_h > 0 else 0 %}
+      <div class="bar {% if h == peak_h %}peak{% endif %}"
+           style="height: {{ height }}%"
+           data-hour="{{ '%02d'|format(h) }}"
+           title="{{ h }}h: {{ count }} flows"></div>
+    {% endfor %}
+  </div>
+  <div class="small" style="margin-top: 28px;">
+    Fuseau horaire: {{ report.business_hours.timezone }}
+  </div>
+  {% endif %}
+
+  {# ─────────────  DEVICES  ───────────── #}
+  <h2>Appareils <span class="count">{{ report.devices | length }} découverts</span></h2>
+  {% if report.devices %}
+  <table>
+    <thead>
+      <tr>
+        <th>IP</th><th>Hostname</th><th>MAC / Vendor</th>
+        <th>Rôle</th><th>Volume</th><th>Top domaines</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in report.devices %}
+      <tr>
+        <td><code>{{ d.ip }}</code></td>
+        <td>{{ d.hostname or '—' }}</td>
+        <td>
+          <code class="small">{{ d.mac or '—' }}</code><br>
+          <span class="small">{{ d.vendor or '' }}</span>
+        </td>
+        <td><span class="pill role">{{ d.role }}</span></td>
+        <td>
+          ↑ {{ d.bytes_sent | humanbytes }}<br>
+          ↓ {{ d.bytes_received | humanbytes }}
+        </td>
+        <td class="small">
+          {% for s in d.top_domains[:3] %}
+            {{ s.domain | truncate_smart(30) }} ({{ s.count }})<br>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Aucun appareil identifié.</div>
+  {% endif %}
+
+  {# ─────────────  SAAS  ───────────── #}
+  <h2>Inventaire SaaS <span class="count">{{ report.saas_inventory | length }} services</span></h2>
+  {% if report.saas_inventory %}
+  <table>
+    <thead>
+      <tr>
+        <th>Service</th><th>Domaine</th><th>Utilisateurs</th>
+        <th>Connexions</th><th>Volume</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in report.saas_inventory[:50] %}
+      <tr>
+        <td><strong>{{ s.service }}</strong></td>
+        <td><code class="small">{{ s.domain | truncate_smart(50) }}</code></td>
+        <td>{{ s.unique_users }}</td>
+        <td>{{ s.connections }}</td>
+        <td>{{ s.bytes | humanbytes }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    Aucun SaaS détecté. Causes possibles: capture trop courte, mode passif sur Wi-Fi
+    (broadcasts only), ou réseau sans trafic HTTPS sortant.
+  </div>
+  {% endif %}
+
+  {# ─────────────  CRITICAL DEPS  ───────────── #}
+  <h2>Dépendances critiques <span class="count">{{ report.critical_dependencies | length }} serveurs</span></h2>
+  {% if report.critical_dependencies %}
+  <table>
+    <thead>
+      <tr>
+        <th>Serveur</th><th>Type</th><th>Clients</th>
+        <th>Services exposés</th><th>Impact si défaillance</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in report.critical_dependencies %}
+      <tr>
+        <td><code>{{ d.server }}</code></td>
+        <td>
+          {% if d.is_internal %}
+            <span class="pill ok">Interne</span>
+          {% else %}
+            <span class="pill warn">Externe</span>
+          {% endif %}
+        </td>
+        <td><strong>{{ d.client_count }}</strong></td>
+        <td>
+          {% for svc in d.services %}
+            <span class="pill">{{ svc }}</span>
+          {% endfor %}
+        </td>
+        <td class="small">{{ d.impact }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Aucune dépendance significative détectée.</div>
+  {% endif %}
+
+  {# ─────────────  PATTERNS  ───────────── #}
+  <h2>Comportements récurrents <span class="count">{{ report.recurring_patterns | length }} patterns</span></h2>
+  {% if report.recurring_patterns %}
+  <table>
+    <thead>
+      <tr>
+        <th>Source</th><th>Cible</th><th>Port</th>
+        <th>Fréquence</th><th>Régularité</th><th>Occurrences</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in report.recurring_patterns %}
+      <tr>
+        <td><code>{{ p.source }}</code></td>
+        <td><code>{{ p.target }}</code></td>
+        <td>{{ p.port }}</td>
+        <td>{{ p.schedule_label }}</td>
+        <td>{{ "%.0f%%" | format(p.regularity_score * 100) }}</td>
+        <td>{{ p.occurrences }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Aucun pattern régulier identifié.</div>
+  {% endif %}
+
+  {# ─────────────  ANOMALIES  ───────────── #}
+  <h2>Anomalies <span class="count">{{ report.anomalies | length }} détectées</span></h2>
+  {% if report.anomalies %}
+  <table>
+    <thead>
+      <tr><th>Type</th><th>Sévérité</th><th>Description</th><th>Volume</th></tr>
+    </thead>
+    <tbody>
+      {% for a in report.anomalies %}
+      <tr>
+        <td><code class="small">{{ a.type }}</code></td>
+        <td>
+          <span class="pill {% if a.severity == 'high' %}crit{% elif a.severity == 'medium' %}warn{% else %}ok{% endif %}">
+            {{ a.severity }}
+          </span>
+        </td>
+        <td>{{ a.description }}</td>
+        <td>{{ a.bytes | humanbytes if a.bytes else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Aucune anomalie détectée.</div>
+  {% endif %}
+
+  {# ─────────────  EXTERNAL  ───────────── #}
+  {% if report.external_destinations %}
+  <h2>Top destinations externes <span class="count">{{ report.external_destinations | length }}</span></h2>
+  <table>
+    <thead>
+      <tr><th>IP</th><th>Service</th><th>Connexions</th><th>Volume</th></tr>
+    </thead>
+    <tbody>
+      {% for e in report.external_destinations[:30] %}
+      <tr>
+        <td><code>{{ e.ip }}</code></td>
+        <td>{{ e.service }}</td>
+        <td>{{ e.connections }}</td>
+        <td>{{ e.bytes | humanbytes }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {# ─────────────  TOPOLOGY  ───────────── #}
+  {% if report.network_topology and (report.network_topology.vlans or report.network_topology.switches) %}
+  <h2>Topologie réseau</h2>
+  {% if report.network_topology.vlans %}
+  <p><strong>VLANs détectés:</strong>
+    {% for v in report.network_topology.vlans %}<span class="pill">VLAN {{ v }}</span>{% endfor %}
+  </p>
+  {% endif %}
+  {% if report.network_topology.switches %}
+  <table>
+    <thead><tr><th>Switch</th><th>Info LLDP</th></tr></thead>
+    <tbody>
+      {% for s in report.network_topology.switches %}
+      <tr><td><code class="small">{{ s.id }}</code></td><td class="small">{{ s.info }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% endif %}
+
+  {# ─────────────  FOOTER  ───────────── #}
+  <footer>
+    Generated by INFRA — Infrastructure Intelligence by Line-Out<br>
+    Données collectées en mode passif (métadonnées uniquement, pas de déchiffrement).
+  </footer>
+
+</div>
+</body>
+</html>
